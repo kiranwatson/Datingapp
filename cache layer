@@ -1,0 +1,46 @@
+# Chache mechanism I used here is Redis 
+# Redis is an in-memory data store that can be used as a cache to store frequently accessed data.
+# Install the necessary packages:
+pip install fastapi redis
+
+# Import the required modules:
+from fastapi import FastAPI
+import redis
+import json
+
+# Create a Redis client and connect to the Redis server:
+redis_client = redis.Redis(host='localhost', port=6379)
+
+# Update the get_potential_matches function to check the cache before performing the matching algorithm:
+
+@app.get("/match/{user_id}")
+def get_potential_matches(user_id: int):
+    # Check cache first
+    cache_key = f"matches:{user_id}"
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        return json.loads(cached_data)
+
+    # If not found in cache, perform matching algorithm
+    user = next((user for user in users if user.id == user_id), None)
+    if user is None:
+        return {"message": "User not found"}
+
+    matches = []
+    for other_user in users:
+        if other_user.id != user_id:
+            common_hobbies = set(user.hobbies).intersection(other_user.hobbies)
+            compatibility_score = len(common_hobbies)
+            if compatibility_score > 0:
+                matches.append({
+                    "id": other_user.id,
+                    "name": other_user.name,
+                    "hobbies": other_user.hobbies,
+                })
+
+    matches = sorted(matches, key=lambda x: x["id"], reverse=True)
+
+    # Store in cache for subsequent calls with a TTL of 10 minutes(600 seconds)
+    redis_client.setex(cache_key, json.dumps(matches), 600)  
+
+    return matches
